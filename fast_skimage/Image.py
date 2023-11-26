@@ -1,5 +1,7 @@
+from skimage.segmentation import watershed
+
 """
-Uses the scikit-image, numpy, matplotlib, PyWavelets and warnings packages to implement the Image class.
+Uses scikit-image, numpy, matplotlib and more packages to implement the Image class.
 See documentation withing this class.
 """
 
@@ -279,7 +281,7 @@ class Image:
         while choice != 'exit':
             if choice == 'a':
                 print(
-                    "For segmentation, you can use methods like 'otsu_threshold', 'optimal_threshold', or 'texture_segmentation'.")
+                    "For segmentation, you can use methods like 'otsu_threshold', 'optimal_threshold', 'region_growing' or 'texture_segmentation'.")
             elif choice == 'b':
                 print("To add a watermark, use the 'add_watermark' method.")
             elif choice == 'c':
@@ -399,6 +401,31 @@ class Image:
 
         self.fourier_amplitute = np.sqrt(np.real(f) ** 2 + np.imag(f) ** 2)
         self.set_image(ifft2(ifftshift(f)).real, "reduce_dithering")
+
+    def region_growing(self, smoothing_factor=4, markers_coordinates=None):
+        """
+        Separates the image into len(markers_coordinates) zones based on image gradient and skimage's watershed using markers.
+        :param smoothing_factor:
+        :param markers_coordinates:
+        :return:
+        """
+        gradient = skr.gradient(skr.mean(self.image, disk(smoothing_factor)), disk(1))
+
+        if markers_coordinates == None: # default settings
+            w4 = self.width//4
+            h4 = self.height//4
+            markers_coordinates = [
+                [w4, h4],
+                [3*w4, h4],
+                [h4,3*h4],
+                [3*w4,3*h4]
+            ]
+
+        markers = np.zeros_like(self.image)
+        for i,(row,col) in enumerate(markers_coordinates):
+            markers[row,col] = i+1
+
+        self.set_image(watershed(gradient, markers), "region_growing")
 
     def reset(self):
         """
