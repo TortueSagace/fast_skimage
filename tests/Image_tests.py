@@ -1,128 +1,45 @@
 import unittest
-from fast_skimage import Image
-from fast_skimage import camera
-from fast_skimage import etretat
-from skimage.data import immunohistochemistry
+
+from skimage.data._fetchers import immunohistochemistry
+
+from fast_skimage import Image, astronaut_noisy, etretat, walking, camera
+from fast_skimage import nyc
+from fast_skimage import zebra
 from fast_skimage.Image import RED, WHITE, BLUE, GREEN
 
 class ImageTestCase(unittest.TestCase):
 
-
-    def test_get_camera(self):
-
-        img = Image("Pictures/camera.jpg")  # Load an image with path...
-        img2 = Image(immunohistochemistry())  # ... or numpy array ...
-        colored_image_array = etretat() # ... or a library image.
-        img3 = Image(colored_image_array.get())
-
-        img2.auto_enhance()  # Apply auto-enhancement
-        img3.auto_enhance()
-
-        img3.show(subplots=(1, 2, 1), size=12)  # Display the result
-        img2.show(subplots=(1, 2, 2), title='Immunochemistry Image')
-
-        img.show(size=(12, 6), type_of_plot='hist', axis=True)  # Plot histogram
-
-    """
     def test_add_watermark(self):
-        path_to_nyc = 'Pictures/nyc.jpg'
-        path_to_watermark = 'Pictures/watermark.png'
-        path_to_zebra = 'Pictures/zebra.jpg'
+        path_to_nyc, path_to_watermark, path_to_zebra = 'Pictures/nyc.jpg', 'Pictures/watermark.png', 'Pictures/zebra.jpg'
 
-        background_image = Image(path_to_nyc)
-        watermark = Image(path_to_watermark)
-        watermark2 = Image(path_to_zebra)
+        background_image = Image(path_to_nyc, chatty_mode=True)
+        watermark = Image(path_to_watermark, chatty_mode=True)
 
-        background_image.add_watermark(watermark2, 0.5, 0.5, wm_color=RED, alpha=0.05, spread=0.2)
+        background_image.add_watermark(watermark, 0.5, 0.5, wm_color=RED, alpha=0.55, spread=0.5)
         background_image.add_watermark(watermark, 0.2, 0.7, wm_color=WHITE, alpha=0.5, spread=1)
-        background_image.add_watermark(watermark2, 0.6, 0.1, wm_color=BLUE, alpha=1, spread=0.1)
-        background_image.add_watermark(watermark2, 0.3, 0.3, wm_color=GREEN, alpha=1, spread=0.15)
+        background_image.add_watermark(watermark, 0.6, 0.1, wm_color=BLUE, alpha=1, spread=2)
+        background_image.add_watermark(watermark, 0.3, 0.3, wm_color=GREEN, alpha=1, spread=3)
         background_image.show(title="Marked NYC Picture")
 
-
     def test_auto_enhance(self):
-        path_to_image1 = 'Pictures/zebra.jpg'
-        path_to_image2 = 'Pictures/astronaut_noisy.jpg'
-        path_to_image3 = 'Pictures/nyc.jpg'
-        path_to_image4 = 'Pictures/etretat.jpg'
-        path_to_image5 = 'Pictures/walking.jpg'
-        path_to_image6 = 'Pictures/camera.jpg'
-        path_to_image7 = immunohistochemistry()
+        object_image1 = zebra()
+        object_image2 = astronaut_noisy()
+        object_image3 = nyc()
+        object_image4 = etretat()
+        object_image5 = walking()
+        object_image6 = camera()
+        array_image7 = immunohistochemistry()
 
-        imlist = [Image(path_to_image1), Image(path_to_image2), Image(path_to_image3), Image(path_to_image4),
-                  Image(path_to_image5), Image(path_to_image6), Image(path_to_image7)]
+        imlist = [Image(object_image1.get(), chatty_mode=True), Image(object_image2.get(), chatty_mode=True),
+                  Image(object_image3.get(), chatty_mode=True), Image(object_image4.get(), chatty_mode=True),
+                  Image(object_image5.get(), chatty_mode=True), Image(object_image6.get(), chatty_mode=True),
+                  Image(array_image7, chatty_mode=True)]
 
         for im in imlist:
-            im.show(subplots=(1, 2, 1), size=12, title=im.name + " original")
+            im.show(subplots=(1, 2, 1), size=12, title="Original Image")
             im.auto_enhance()
-            im.show(subplots=(1, 2, 2), title=im.name + " auto-enhanced")
+            im.show(subplots=(1, 2, 2), title="Auto-enhanced Image")
 
-    def test_texture_segmentation(self):
-        im = Image('Pictures/zebra.jpg')
-
-        im.texture_segmentation(patch_size=3)
-        im.show(greyscale=True)
-
-
-    def test_help(self):
-        im = Image(immunohistochemistry())
-        help(Image)
-        #im.help() --> launches the help menu
-
-
-    def test_show(self):
-        # Load an image with path...
-        img = Image("Pictures/camera.jpg")
-        # ... or numpy array
-        img2 = Image(immunohistochemistry())
-
-        # Apply auto-enhancement
-        img.auto_enhance()
-        img2.auto_enhance()
-
-        # Display the result
-        img.show(subplots=(1, 2, 1), size=12)
-        img2.show(subplots=(1, 2, 2), title='Immunochemistry Image')
-
-        # Plot histogram
-        img.show(size=(12, 6), type_of_plot='hist', axis=True)
-
-
-    def test_save_data(self):
-
-        path_to_image1 = 'Pictures/zebra.jpg'
-        path_to_image2 = 'Pictures/astronaut_noisy.jpg'
-        path_to_image3 = 'Pictures/nyc.jpg'
-        path_to_image4 = 'Pictures/etretat.jpg'
-        path_to_image5 = 'Pictures/walking.jpg'
-        path_to_image6 = 'Pictures/camera.jpg'
-        path_to_image7 = 'Pictures/watermark.png'
-
-        paths = [
-            path_to_image1,
-            path_to_image2,
-            path_to_image3,
-            path_to_image4,
-            path_to_image5,
-            path_to_image6,
-            path_to_image7
-        ]
-
-        for path in paths:
-            img = Image(path)
-            name = path[9:-4]
-            with open(name+ ".py", 'w', encoding='utf-8') as file:
-                image_list = img.image.tolist()
-                string = f'''
-import numpy as np
- 
-class {name}:
-    def get(self):
-        return np.array({image_list})
-'''
-                file.write(string)
-
-"""
 
 if __name__ == '__main__':
     unittest.main()

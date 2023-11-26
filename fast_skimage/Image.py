@@ -16,6 +16,7 @@ from numpy.fft import fft2,ifft2,fftshift,ifftshift
 from skimage.restoration import estimate_sigma
 from skimage.filters.rank import median
 from skimage.filters import threshold_otsu
+from tqdm import tqdm
 import pywt
 
 BLACK = (0, 0, 0)
@@ -31,7 +32,7 @@ class Image:
     Written by Alexandre Le Mercier on the 21th of November 2023.
     """
 
-    def __init__(self, path_or_ndarray):
+    def __init__(self, path_or_ndarray, chatty_mode=False):
         self.path_or_ndarray = path_or_ndarray
 
         if type(path_or_ndarray) == str:
@@ -44,7 +45,8 @@ class Image:
 
         self.width = self.image.shape[0]
         self.height = self.image.shape[1]
-        self.iscolor = (len(self.image.shape) != 2)
+        self.get_iscolor() # init self.iscolor
+        self.chatty = chatty_mode
 
     def __add__(self, other):
         self.check_size(other.image)
@@ -83,68 +85,61 @@ class Image:
         :param alpha: float (transparency)
         :param spread: float (modifies the scale of the watermark along with its density)
         """
-        bg_pict = self.image
+        ancient_image = self.image
+        self.get_iscolor()
 
         if type(wm) == Image:
             wm = wm.image
 
-        if len(wm.shape) == 3:
-            wm_width, wm_height, wm_colors = wm.shape
-            bg_width, bg_height, bg_colors = bg_pict.shape
-            x = rel_y * bg_width
-            y = rel_x * bg_height
+        wm_width, wm_height = wm.shape[0], wm.shape[1]
+        bg_width, bg_height = self.image.shape[0], self.image.shape[1]
 
-            # Very basic method to segment the watermark:
-            wm_bg_limit = np.mean(wm)
+        x = rel_y * bg_width
+        y = rel_x * bg_height
 
-            for pixel_color in range(3):
-                for i in range(wm_width):
-                    for j in range(wm_height):
-                        if wm[i, j, pixel_color] >= wm_bg_limit:
+        # Very basic method to segment the watermark:
+        wm_bg_limit = np.mean(wm)
 
+        Wm = Image(wm)
+        if self.iscolor:
+            iterable = range(3)
+            if not Wm.iscolor:
+                Wm.gray_to_color()
+
+        elif not self.iscolor and Wm.iscolor:
+            self.gray_to_color()
+            iterable = range(3)
+
+        else:
+            iterable = range(1)
+
+        wm = Wm.image
+
+        for pixel_color in self.get_iterable(iterable):
+            for i in range(wm_width):
+                for j in range(wm_height):
+                    if wm[i, j, pixel_color] >= wm_bg_limit:
+
+                        X = int(x + i * spread)
+                        Y = int(y + j * spread)
+
+                        try:
+                            self.image[X, Y, pixel_color] \
+                                = self.image[X, Y, pixel_color] * (1 - alpha) + wm_color[pixel_color] * alpha
+                        except:
+
+                            warnings.warn("Spread parameter is too large for the given image. Spread was ignored.")
+                            spread = 1.0
                             X = int(x + i * spread)
                             Y = int(y + j * spread)
+                            self.image[X, Y, pixel_color] \
+                                = self.image[X, Y, pixel_color] * (1 - alpha) + wm_color[pixel_color] * alpha
 
-                            try:
-                                bg_pict[X, Y, pixel_color] \
-                                    = bg_pict[X, Y, pixel_color] * (1 - alpha) + wm_color[pixel_color] * alpha
-                            except:
 
-                                warnings.warn("Spread parameter is too large for the given image. Spread was ignored.")
-                                spread = 1.0
-                                X = int(x + i * spread)
-                                Y = int(y + j * spread)
-                                bg_pict[X, Y, pixel_color] \
-                                    = bg_pict[X, Y, pixel_color] * (1 - alpha) + wm_color[pixel_color] * alpha
+        new_image = self.image
+        self.image = ancient_image
+        self.set_image(new_image, "add_watermark")
 
-        else: # grayscale
-            wm_width, wm_height = wm.shape
-            bg_width, bg_height, bg_colors = bg_pict.shape
-            x = rel_y * bg_width
-            y = rel_x * bg_height
-
-            # Very basic method to segment the watermark:
-            wm_bg_limit = np.mean(wm)
-
-            for pixel_color in range(3):
-                for i in range(wm_width):
-                    for j in range(wm_height):
-                        if wm[i, j] >= wm_bg_limit:
-
-                            X = int(x + i * spread)
-                            Y = int(y + j * spread)
-
-                            try:
-                                bg_pict[X, Y] \
-                                    = bg_pict[X, Y] * (1 - alpha) + wm_color[pixel_color] * alpha
-                            except:
-
-                                warnings.warn("Spread parameter is too large for the given image. Spread was ignored.")
-                                spread = 1.0
-                                X = int(x + i * spread)
-                                Y = int(y + j * spread)
-                                bg_pict[X, Y] \
-                                    = bg_pict[X, Y] * (1 - alpha) + wm_color[pixel_color] * alpha
 
 
     def auto_enhance(self):
@@ -167,7 +162,7 @@ class Image:
         Applies auto-level adjustment to the image, enhancing contrast by redistributing the image intensity levels.
         :param size: int (size of the disk for local auto-level operation).
         """
-        self.image = skr.autolevel(self.image, disk(size))
+        self.set_image(skr.autolevel(self.image, disk(size)), "auto_level")
 
     def check_size(self, other_image):
         if self.image.shape != other_image.shape:
@@ -179,12 +174,16 @@ class Image:
         Detects noise in the image by estimating the noise standard deviation across color channels.
         :param noisy_threshold: float (value from which we consider the image as noisy)
         """
+        self.get_iscolor()
         if self.iscolor:
             sigma_est = estimate_sigma(self.image, average_sigmas=True, channel_axis=-1)
         else:
             sigma_est = estimate_sigma(self.image, average_sigmas=True)
 
-        return sigma_est > noisy_threshold
+        isnoisy = sigma_est > noisy_threshold
+        self.user_message(f"The image was estimated noisy (sigma estimated > noise threshold of {noisy_threshold}).", isnoisy)
+
+        return isnoisy
 
     def downsample_image(self, factor=2):
         """
@@ -213,7 +212,7 @@ class Image:
         cdf_m = np.ma.masked_equal(cdf_normalized, 0)  # to avoid division by zero error
         cdf_m = (cdf_m - cdf_m.min()) * 255 / (cdf_m.max() - cdf_m.min())
         cdf = np.ma.filled(cdf_m, 0).astype('uint8')  # replace the withdrawn values
-        self.image = cdf[image]
+        self.set_image(cdf[image], "equalize")
 
     def extract_rgb(self):
         return self.image[:, :, 0], self.image[:, :, 1], self.image[:, :, 2]
@@ -224,7 +223,21 @@ class Image:
         :param gamma: float (gamma value for the correction, higher values darken the image, lower values brighten it).
         """
         lut = np.power(np.arange(256) / 255.0, gamma) * 255
-        self.image = lut[self.image.astype(np.uint8)].astype(np.uint8)
+        self.set_image(lut[self.image.astype(np.uint8)].astype(np.uint8), "gamma_correction")
+
+    def get_iscolor(self):
+        """
+        Verifies the self.iscolor statement. This function was created because of the various operations on images
+        that could change self.iscolor without being sure that the class object has noticed it. "get_iscolor" is hence
+        an additional security measure.
+        """
+        if len(self.image.shape) > 2:
+            self.iscolor = True
+        else:
+            self.iscolor = False
+
+    def get_iterable(self, iterable):
+        return tqdm(iterable) if self.chatty else iterable
 
     def gray_to_color(self):
         """
@@ -236,12 +249,16 @@ class Image:
         :return: numpy.ndarray
             A 3D numpy array where the grayscale values have been replicated across three channels to create an RGB image.
         """
-        if len(self.image.shape) != 2:
+        self.get_iscolor()
+        if self.iscolor:
             raise ValueError("Input image must be a 2D array representing a grayscale image.")
 
         # Replicate the single channel across all three RGB channels
-        color_image = np.stack((self.image,) * 3, axis=-1)
-        self.image = color_image
+        color_image = np.array(np.stack((self.image,) * 3, axis=-1))
+        self.set_image(color_image, "gray_to_color")
+        if not self.iscolor:
+            raise AssertionError(f"Something went wrong wile transforming {self.name} in grayscale.")
+
 
     def help(self):
         """
@@ -285,7 +302,7 @@ class Image:
         hsv_image = color.rgb2hsv(self.image)
         hsv_image[:, :, 1] *= factor
         hsv_image[:, :, 1] = np.clip(hsv_image[:, :, 1], 0, 1)  # Ensure saturation remains in valid range
-        self.image = color.hsv2rgb(hsv_image)
+        self.set_image(color.hsv2rgb(hsv_image), "increase_saturation")
 
     def inverse(self):
         """
@@ -293,7 +310,7 @@ class Image:
         original color scheme.
         """
         invert_lut = np.array([255 - i for i in range(256)])
-        self.image = invert_lut[self.image]
+        self.set_image(invert_lut[self.image], "inverse")
 
 
     def mean_filter(self, size=2):
@@ -302,10 +319,11 @@ class Image:
         If the image is in color, the filter is applied to each channel separately.
         :param size: int (size of the mean filter kernel).
         """
+        self.get_iscolor()
         if not self.iscolor:
-            self.image = mean(self.image, disk(size))
+            self.set_image(mean(self.image, disk(size)), "mean_filter")
         else:
-            for i in range(3):  # Assuming the image has 3 channels (RGB)
+            for i in self.get_iterable(range(3)):  # Assuming the image has 3 channels (RGB)
                 self.image[:, :, i] = mean(self.image[:, :, i], disk(size))
 
     def median_filter(self, size=2):
@@ -314,10 +332,11 @@ class Image:
         If the image is in color, the filter is applied to each channel separately.
         :param size: int (size of the median filter kernel).
         """
+        self.get_iscolor()
         if not self.iscolor:
-            self.image = median(self.image, disk(size))
+            self.set_image(median(self.image, disk(size)), "median_filter")
         else:
-            for i in range(3):  # Assuming the image has 3 channels (RGB)
+            for i in self.get_iterable(range(3)):  # Assuming the image has 3 channels (RGB)
                 self.image[:, :, i] = median(self.image[:, :, i], disk(size))
 
     def optimal_threshold(self, initial_threshold=128, tolerance=1):
@@ -342,7 +361,7 @@ class Image:
             T_new = (m1 + m2) / 2
 
             threshold_lut = np.array([i if i >= T else 0 for i in range(256)])
-            self.image = threshold_lut[self.image]
+            self.set_image(threshold_lut[self.image], "optimal_threshold")
 
             # Check for convergence
             if np.abs(T - T_new) < tolerance:
@@ -354,7 +373,8 @@ class Image:
         Applies Otsu's thresholding to the image to convert it to a binary image where the threshold is determined automatically.
         """
         th = threshold_otsu(self.image)
-        self.image = self.image > th
+        self.set_image(self.image > th, "otsu_threshold")
+        self.get_iscolor()
 
     def reduce(self, reduction_factor=2):
         """
@@ -363,7 +383,7 @@ class Image:
         :param reduction_factor: int (factor by which to reduce the gray levels).
         """
         reduced_lut = np.array([i // reduction_factor for i in range(256)])
-        self.image = reduced_lut[self.image]
+        self.set_image(reduced_lut[self.image], "reduce")
 
     def reduce_dithering(self, fourier_filter_radius=20):
         """
@@ -372,12 +392,12 @@ class Image:
         :param fourier_filter_radius: int (radius for the Fourier filter).
         """
         f = fftshift(fft2(self.image))  # shift Fourier image so that the center corresponds to low frequencies
-        for x in range(len(f)):
+        for x in self.get_iterable(range(len(f))):
             for y in range(len(f[x])):
                 f[x, y] = f[x, y] * self.round_mask(x, y, fourier_filter_radius, center=True)
 
         self.fourier_amplitute = np.sqrt(np.real(f) ** 2 + np.imag(f) ** 2)
-        self.image = ifft2(ifftshift(f)).real
+        self.set_image(ifft2(ifftshift(f)).real, "reduce_dithering")
 
     def reset(self):
         """
@@ -387,7 +407,7 @@ class Image:
             self.name = self.path[0:-4]
         except:
             Warning("Cannot reset the name")
-        self.image = imread(self.path_or_ndarray)
+        self.set_image(imread(self.path_or_ndarray), "reset")
 
     def round_mask(self, x, y, radius_lim, center=False):
         if center:
@@ -417,7 +437,32 @@ class Image:
             file.write(str(image_list))
 
 
-    def show(self, size=6, title='', x_axis='', y_axis='', type_of_plot='rgb', subplots=(0, 0, 0), greyscale=False,
+    def set_image(self, new_image, method=None):
+        """
+        Safe way to change self.image
+        :param new_image: the new self.image
+        :param method: the method that changed the image
+        """
+        ancient_iscolor = self.iscolor
+        ancient_shape = self.image.shape
+        self.image = new_image
+        self.get_iscolor()
+        if self.iscolor:
+            self.width, self.height, self.colors = self.image.shape
+        else:
+            self.width, self.height = self.image.shape
+
+        if not method:
+            self.user_message("Image array was updated.")
+        else:
+            self.user_message(f"Image array was updated by method \"{method}\".")
+        self.user_message("Image is now grayscale.", (not self.iscolor) and (ancient_iscolor))
+        self.user_message("Image is RGB.", (self.iscolor) and (not ancient_iscolor))
+        self.user_message(f"Image shape has changed (from {ancient_shape} to {self.image.shape}).",
+                          (self.iscolor) and (not ancient_iscolor))
+
+
+    def show(self, size=6, title='', x_axis='', y_axis='', type_of_plot='rgb', subplots=(0, 0, 0), grayscale=False,
              normalize=False, axis=False, threshold=None, colorbar=False):
         """
         Shortcut function to execute commands often used to plot functions and show images.
@@ -427,17 +472,14 @@ class Image:
         :param y_axis: str
         :param type_of_plot: 'rgb' for showing the rgb image, 'hist' for histograms
         :param subplots: tuple (a, b, c) for matplotlib's subplots
-        :param greyscale: bool
+        :param grayscale: bool
         :param normalize: bool  (for histograms only)
         :param threshold: float (draws a red line in the histogram)
         :return: shows the plot (no return value).
         """
 
         image = self.image
-        if len(image) == 3:
-            self.iscolor = True
-        else:
-            self.iscolor = False
+        self.get_iscolor()
 
         if len(subplots) != 3 and subplots != (0, 0, 0):
             raise AttributeError("'subplots' must contain 3 values")
@@ -462,16 +504,18 @@ class Image:
                 plt.title(self.name)
             if not self.iscolor:
                 plt.imshow(image, cmap='gray')
-            elif greyscale:
+            elif grayscale:
                 image = color.rgb2gray(image)
-                self.iscolor = False
+                self.get_iscolor()
+                if self.iscolor == True:
+                    raise AssertionError("Something went wrong with rgb2gray: the image is still rgb.")
                 plt.imshow(image, cmap='gray')
             else:
                 plt.imshow(image)
         elif type_of_plot == 'hist':
             if not self.iscolor:
                 if title == '':
-                    plt.title("Histogram of greyscale intensities")
+                    plt.title("Histogram of grayscale intensities")
                 hist, _ = np.histogram(image, bins=256, range=(0, 255))
                 if normalize:
                     hist /= hist.sum()
@@ -510,6 +554,7 @@ class Image:
         if subplots[2] == subplots[0] * subplots[1]:
             plt.show()
 
+
     def sliding_window(self, PATCH_SIZE, method='max', return_mask=False):
         """
         Applies a sliding window technique over the image to compute a texture descriptor for each window.
@@ -524,7 +569,7 @@ class Image:
         """
         im = self.image
         output = np.zeros((im.shape[0], im.shape[1]))
-        for i in range(0, im.shape[0] - PATCH_SIZE[0] + 1, PATCH_SIZE[0]):
+        for i in self.get_iterable(range(0, im.shape[0] - PATCH_SIZE[0] + 1, PATCH_SIZE[0])):
             for j in range(0, im.shape[1] - PATCH_SIZE[1] + 1, PATCH_SIZE[1]):
                 patch = im[i:i + PATCH_SIZE[0], j:j + PATCH_SIZE[1]]
                 if method == 'max':
@@ -538,7 +583,9 @@ class Image:
         if return_mask:
             return Image(output)
         else:
-            self.image = output
+            self.set_image(output, "sliding_window")
+            self.get_iscolor()
+
 
     def stretch(self, T_min, T_max):
         """
@@ -549,7 +596,8 @@ class Image:
         """
         stretched_lut = np.array(
             [0 if i < T_min else 255 if i > T_max else ((i - T_min) / (T_max - T_min)) * 255 for i in range(256)])
-        self.image = stretched_lut[self.image]
+        self.set_image(stretched_lut[self.image], "stretch")
+
 
     def texture_descriptor_entropy(self):
         """
@@ -559,6 +607,7 @@ class Image:
         :return float: The entropy of the image.
         """
         return shannon_entropy(self)
+
 
     def texture_descriptor_max(self, patch):
         """
@@ -572,6 +621,7 @@ class Image:
         e = patch.max()
         return e
 
+
     def texture_segmentation(self, patch_size=(3, 3), method='max'):
         """
         Segments the image based on texture using a specified texture descriptor and segmentation method.
@@ -584,7 +634,7 @@ class Image:
 
         self.sliding_window(patch_size, method=method)
         self.otsu_threshold()
-        self.iscolor = False
+
 
     def threshold(self, threshold):
         """
@@ -593,4 +643,14 @@ class Image:
          :param threshold: int (threshold value).
          """
         threshold_lut = np.array([i if i >= threshold else 0 for i in range(256)])
-        self.image = threshold_lut[self.image]
+        self.set_image(threshold_lut[self.image], "threshold")
+
+
+    def user_message(self, message, condition=True):
+        """
+        Sends a message to the console for the user if chatty mode is activated for this image
+        :param message: The message to display (if chatty mode is activated)
+        :param condition: The optional condition to display this message
+        """
+        if self.chatty and condition:
+            print(f"Image \"{self.name}\": " + message)
