@@ -20,7 +20,7 @@ setup(
                 " numpy and matplotlib libraries.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://pypi.org/project/fast-skimage/",
+    url="https://github.com/TortueSagace/fast_skimage",
     author="Alexandre Le Mercier",
     author_email="alexandre.le.mercier@ulb.be",
     license="MIT",

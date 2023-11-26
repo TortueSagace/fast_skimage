@@ -1,6 +1,6 @@
 # fast-skimage
 
-Welcome to the Image Processing Library. This powerful library offers a wide range of tools for advanced image manipulation and analysis, wrapped up in the accessible `Image` class.
+Welcome to `fast-skimage`, an image acquisition and processing library. This powerful library offers a wide range of tools for advanced image manipulation and analysis, wrapped up in the accessible `Image` class.
 
 ## Features
 - **Advanced Manipulation**: Apply complex operations like adding watermarks, noise detection, auto-enhancement, and saturation increase with simple method calls.
