@@ -1,0 +1,21 @@
+language: python
+python:
+  - 3.6
+
+# Update pip to the latest version
+before_install:
+  - python --version
+  - pip install -U pip
+
+install:
+  - pip install -r requirements.txt
+
+script:
+  - python -m unittest tests/Image_tests.py
+
+deploy:
+  provider: pypi
+  username: "__token__"
+  password: "pypi-AgEIcHlwaS5vcmcCJGYwMWZkMWJlLWU5NjMtNGI3Mi04NDNmLWRjNjUwNzM4YTUxNwACKlszLCJmOGMwM2RjMS1lMGNhLTQwNWMtYWIzZi1kZDg3MGQ1MWQ3YzAiXQAABiCg0wu-8gMcnTOKhNg7MXaKukGnDa1tJGkQEOfLjAYY1Q"
+  on:
+    branch: master
