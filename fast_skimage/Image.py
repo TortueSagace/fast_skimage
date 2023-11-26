@@ -17,7 +17,7 @@ from skimage.restoration import estimate_sigma
 from skimage.filters.rank import median
 from skimage.filters import threshold_otsu
 from tqdm import tqdm
-import pywt
+
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -41,12 +41,13 @@ class Image:
             self.name = self.path[:-4]
         else:
             self.image = path_or_ndarray
-            self.name = "Example image"
+            self.name = "Image of shape " + str(self.image.shape)
 
         self.width = self.image.shape[0]
         self.height = self.image.shape[1]
         self.get_iscolor() # init self.iscolor
         self.chatty = chatty_mode
+        self.pipeline = []
 
     def __add__(self, other):
         self.check_size(other.image)
@@ -181,7 +182,7 @@ class Image:
             sigma_est = estimate_sigma(self.image, average_sigmas=True)
 
         isnoisy = sigma_est > noisy_threshold
-        self.user_message(f"The image was estimated noisy (sigma estimated > noise threshold of {noisy_threshold}).", isnoisy)
+        self.user_message(f"The image was estimated noisy (estimated sigma {round(sigma_est, 3)} > threshold {noisy_threshold}).", isnoisy)
 
         return isnoisy
 
@@ -443,8 +444,6 @@ class Image:
         :param new_image: the new self.image
         :param method: the method that changed the image
         """
-        ancient_iscolor = self.iscolor
-        ancient_shape = self.image.shape
         self.image = new_image
         self.get_iscolor()
         if self.iscolor:
@@ -453,13 +452,11 @@ class Image:
             self.width, self.height = self.image.shape
 
         if not method:
-            self.user_message("Image array was updated.")
+            self.user_message(f"Image array was updated. Shape is {self.image.shape}.")
         else:
             self.user_message(f"Image array was updated by method \"{method}\".")
-        self.user_message("Image is now grayscale.", (not self.iscolor) and (ancient_iscolor))
-        self.user_message("Image is RGB.", (self.iscolor) and (not ancient_iscolor))
-        self.user_message(f"Image shape has changed (from {ancient_shape} to {self.image.shape}).",
-                          (self.iscolor) and (not ancient_iscolor))
+            self.pipeline.append(method)
+
 
 
     def show(self, size=6, title='', x_axis='', y_axis='', type_of_plot='rgb', subplots=(0, 0, 0), grayscale=False,
@@ -551,8 +548,11 @@ class Image:
         if colorbar:
             plt.colorbar()
 
+        self.user_message(f"Pipeline of the image displayed below is: {self.pipeline}")
+
         if subplots[2] == subplots[0] * subplots[1]:
             plt.show()
+
 
 
     def sliding_window(self, PATCH_SIZE, method='max', return_mask=False):

@@ -35,6 +35,8 @@ class ImageTestCase(unittest.TestCase):
                   Image(object_image5.get(), chatty_mode=True), Image(object_image6.get(), chatty_mode=True),
                   Image(array_image7, chatty_mode=True)]
 
+
+
         for im in imlist:
             im.show(subplots=(1, 2, 1), size=12, title="Original Image")
             im.auto_enhance()
