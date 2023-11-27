@@ -35,12 +35,16 @@ class ImageTestCase(unittest.TestCase):
                   Image(object_image5.get(), chatty_mode=True), Image(object_image6.get(), chatty_mode=True),
                   Image(array_image7, chatty_mode=True)]
 
-
-
         for im in imlist:
             im.show(subplots=(1, 2, 1), size=12, title="Original Image")
             im.auto_enhance()
             im.show(subplots=(1, 2, 2), title="Auto-enhanced Image")
+
+    def test_segmentation(self):
+        im = Image('Pictures/mri_brain.jpg', True)
+        im.color_to_gray()
+        im.gaussian_mixture_segmentation(zones=4, iterations=1000)
+        im.show()
 
 
 if __name__ == '__main__':

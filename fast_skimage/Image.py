@@ -1,5 +1,3 @@
-from skimage.segmentation import watershed
-
 """
 Uses scikit-image, numpy, matplotlib and more packages to implement the Image class.
 See documentation withing this class.
@@ -19,6 +17,13 @@ from skimage.restoration import estimate_sigma
 from skimage.filters.rank import median
 from skimage.filters import threshold_otsu
 from tqdm import tqdm
+from skimage.segmentation import watershed
+from skimage.filters import gaussian, sobel
+from sklearn.mixture import GaussianMixture
+from skimage.transform import resize
+from skimage import img_as_ubyte
+from skimage.feature import graycomatrix, graycoprops
+
 
 
 BLACK = (0, 0, 0)
@@ -40,9 +45,11 @@ class Image:
         if type(path_or_ndarray) == str:
             self.path = path_or_ndarray
             self.image = imread(self.path)
+            self.image_save = imread(self.path)
             self.name = self.path[:-4]
         else:
             self.image = path_or_ndarray
+            self.image_save = path_or_ndarray
             self.name = "Image of shape " + str(self.image.shape)
 
         self.width = self.image.shape[0]
@@ -172,6 +179,10 @@ class Image:
             raise AttributeError(
                 f"Both images must have the same size, but image 1 has {self.image.shape} but image 2 {other_image.shape}.")
 
+    def color_to_gray(self):
+        self.set_image(color.rgb2gray(self.image), "color_to_gray")
+
+
     def detect_noise(self, noisy_threshold=0.01):
         """
         Detects noise in the image by estimating the noise standard deviation across color channels.
@@ -228,6 +239,40 @@ class Image:
         lut = np.power(np.arange(256) / 255.0, gamma) * 255
         self.set_image(lut[self.image.astype(np.uint8)].astype(np.uint8), "gamma_correction")
 
+
+    def gaussian_mixture_segmentation(self, iterations=100, zones=4):
+        """
+        Uses the clustering method "Gaussian Mixture" to segment the zones.
+        :param iterations: number of maximum iterations of the algorithm
+        :param zones: number of zones to segment
+        """
+
+        if self.iscolor:
+            self.color_to_gray()
+            self.user_message("Cannot apply gaussian mixture to colored image. Grayscale conversion was automatically performed.")
+
+        image_flattened = self.image.flatten().reshape(-1, 1)
+
+        gmm = GaussianMixture(n_components=zones, max_iter=iterations)
+
+        # Fit the GMM model only on the non-zero, masked pixels
+        gmm.fit(image_flattened)
+
+        # Predict the segmentation on the non-zero, masked pixels
+        segmented = gmm.predict(image_flattened)
+
+        segmented_image = segmented.reshape(self.image.shape)
+
+        self.set_image(segmented_image, "gaussian mixture segmentation")
+
+
+    def get_descriptors(self, region, displacements, angles, props):
+        glcm = graycomatrix(region, displacements, angles, 256, normed=True, symmetric=True)
+        descriptors = []
+        for prop in props:
+            descriptors += [graycoprops(glcm, prop)]
+        return np.array(descriptors).flatten()
+
     def get_iscolor(self):
         """
         Verifies the self.iscolor statement. This function was created because of the various operations on images
@@ -263,6 +308,58 @@ class Image:
             raise AssertionError(f"Something went wrong wile transforming {self.name} in grayscale.")
 
 
+    def graycomatrix_segmentation(self, angles = [0, np.pi/6, np.pi/3, np.pi/2, 2*np.pi/3, 5*np.pi/6], displacements = [1, 2, 3], props = ['dissimilarity'], n_cells_x=None, n_cells_y=None):
+
+        n_cells_x = self.image.shape[0] if n_cells_x == None else n_cells_x
+        n_cells_y = self.image.shape[1] if n_cells_y == None else n_cells_y
+
+        size_x = self.image.shape[0] // n_cells_x
+        size_y = self.image.shape[1] // n_cells_y
+
+        descriptors = np.zeros((n_cells_y, n_cells_x, len(angles)*len(displacements)*len(props)))
+
+        # Convert self.imageage to grayscale
+        self.color_to_gray() if self.image.ndim == 3 else im
+
+        # Scale grayscale image to 8-bit and convert to uint8
+        imgray_8bit = img_as_ubyte(self.image)
+
+        for y in self.get_iterable(range(n_cells_y)):
+            for x in range(n_cells_x):
+                # Ensure the slicing indices are within the image dimensions
+                y_start = min(y * size_y, imgray_8bit.shape[0] - 1)
+                y_end = min((y + 1) * size_y, imgray_8bit.shape[0])
+                x_start = min(x * size_x, imgray_8bit.shape[1] - 1)
+                x_end = min((x + 1) * size_x, imgray_8bit.shape[1])
+
+                region = imgray_8bit[y_start:y_end, x_start:x_end]
+                descriptors[y, x] = self.get_descriptors(region, displacements, angles, props)
+
+        ndescriptors = (descriptors - descriptors.mean()) / descriptors.std()
+
+        new_images = [Image(ndescriptors[:, :, i], chatty_mode=self.chatty) for i in range(ndescriptors.shape[2])]
+
+        return new_images
+
+
+    def grow_square(self):
+        """
+        Turns a rectangular-shaped image into a squared-shape image.
+        """
+        if self.width == self.height:
+            warnings.warn("The image is already squared. Can't perform 'grow_square' method.")
+            return
+
+        delta = abs(self.height - self.width)
+        if self.height < self.width:
+            padding = ((0, 0), (0, delta), (0, 0)) if self.iscolor else ((0, 0), (0, delta))
+        else:
+            padding = ((0, delta), (0, 0), (0, 0)) if self.iscolor else ((0, delta), (0, 0))
+
+        square_image = np.pad(self.image, padding, mode='edge')
+        self.set_image(square_image, "grow_square")
+
+
     def help(self):
         """
         Interactive help menu for the Image class that guides users to appropriate methods based on their needs.
@@ -281,7 +378,7 @@ class Image:
         while choice != 'exit':
             if choice == 'a':
                 print(
-                    "For segmentation, you can use methods like 'otsu_threshold', 'optimal_threshold', 'region_growing' or 'texture_segmentation'.")
+                    "For segmentation, you can use methods like 'gaussian_mixture_segmentation', 'otsu_threshold', 'optimal_threshold', 'region_growing' or 'texture_segmentation'.")
             elif choice == 'b':
                 print("To add a watermark, use the 'add_watermark' method.")
             elif choice == 'c':
@@ -341,6 +438,7 @@ class Image:
         else:
             for i in self.get_iterable(range(3)):  # Assuming the image has 3 channels (RGB)
                 self.image[:, :, i] = median(self.image[:, :, i], disk(size))
+
 
     def optimal_threshold(self, initial_threshold=128, tolerance=1):
         """
@@ -402,30 +500,43 @@ class Image:
         self.fourier_amplitute = np.sqrt(np.real(f) ** 2 + np.imag(f) ** 2)
         self.set_image(ifft2(ifftshift(f)).real, "reduce_dithering")
 
-    def region_growing(self, smoothing_factor=4, markers_coordinates=None):
+
+    def region_growing(self, sigma=1, markers_coordinates=None):
         """
-        Separates the image into len(markers_coordinates) zones based on image gradient and skimage's watershed using markers.
-        :param smoothing_factor:
-        :param markers_coordinates:
-        :return:
+        Segments the image into regions using the watershed algorithm with specified markers.
+        Applies Gaussian blur followed by Sobel edge detection to prepare the image.
+
+        :param sigma: float, standard deviation for Gaussian blur.
+        :param markers_coordinates: list of tuples, coordinates for markers.
+        :return: None, modifies the image in-place.
         """
-        gradient = skr.gradient(skr.mean(self.image, disk(smoothing_factor)), disk(1))
+        # Convert to grayscale if the image is colored
+        self.get_iscolor()
+        if self.iscolor:
+            self.color_to_gray()
 
-        if markers_coordinates == None: # default settings
-            w4 = self.width//4
-            h4 = self.height//4
-            markers_coordinates = [
-                [w4, h4],
-                [3*w4, h4],
-                [h4,3*h4],
-                [3*w4,3*h4]
-            ]
+        # Apply Gaussian blur and Sobel edge detection
+        smoothed = gaussian(self.image, sigma=sigma)
+        edges = sobel(smoothed)
 
-        markers = np.zeros_like(self.image)
-        for i,(row,col) in enumerate(markers_coordinates):
-            markers[row,col] = i+1
+        # Default marker coordinates
+        if markers_coordinates is None:
+            w4, h4 = self.width // 4, self.height // 4
+            markers_coordinates = [[w4, h4], [3*w4, h4], [h4, 3*h4], [3*w4, 3*h4]]
 
-        self.set_image(watershed(gradient, markers), "region_growing")
+        # Create markers
+        markers = np.zeros_like(self.image, dtype=np.int)
+        for i, (row, col) in enumerate(markers_coordinates):
+            markers[row, col] = i + 1
+
+        # Apply watershed
+        segmented_image = watershed(edges, markers)
+        if self.iscolor:
+            # For color images, we keep the original colors where segmentation occurred
+            self.set_image(color.label2rgb(segmented_image, self.image, kind='overlay'), "region_growing")
+        else:
+            self.set_image(segmented_image, "region_growing")
+
 
     def reset(self):
         """
@@ -435,7 +546,11 @@ class Image:
             self.name = self.path[0:-4]
         except:
             Warning("Cannot reset the name")
-        self.set_image(imread(self.path_or_ndarray), "reset")
+        self.set_image(self.image_save, "reset")
+        self.pipeline = []
+
+    def resize_to(self, output_shape, order=0):
+        self.set_image(resize(self.image, output_shape, order=order), "resize_to")
 
     def round_mask(self, x, y, radius_lim, center=False):
         if center:
@@ -487,7 +602,7 @@ class Image:
 
 
     def show(self, size=6, title='', x_axis='', y_axis='', type_of_plot='rgb', subplots=(0, 0, 0), grayscale=False,
-             normalize=False, axis=False, threshold=None, colorbar=False):
+             normalize=False, axis=False, threshold=None, colorbar=False, alpha=1, show=True):
         """
         Shortcut function to execute commands often used to plot functions and show images.
         :param size: int if square or bool if rectangle
@@ -502,7 +617,6 @@ class Image:
         :return: shows the plot (no return value).
         """
 
-        image = self.image
         self.get_iscolor()
 
         if len(subplots) != 3 and subplots != (0, 0, 0):
@@ -527,20 +641,20 @@ class Image:
             if title == '':
                 plt.title(self.name)
             if not self.iscolor:
-                plt.imshow(image, cmap='gray')
+                plt.imshow(self.image, cmap='gray', alpha=alpha)
             elif grayscale:
-                image = color.rgb2gray(image)
+                self.color_to_gray()
                 self.get_iscolor()
                 if self.iscolor == True:
                     raise AssertionError("Something went wrong with rgb2gray: the image is still rgb.")
-                plt.imshow(image, cmap='gray')
+                plt.imshow(self.image, cmap='gray', alpha=alpha)
             else:
-                plt.imshow(image)
+                plt.imshow(self.image, alpha=alpha)
         elif type_of_plot == 'hist':
             if not self.iscolor:
                 if title == '':
                     plt.title("Histogram of grayscale intensities")
-                hist, _ = np.histogram(image, bins=256, range=(0, 255))
+                hist, _ = np.histogram(self.image, bins=256, range=(0, 255))
                 if normalize:
                     hist /= hist.sum()
                 plt.plot(hist)
@@ -577,7 +691,7 @@ class Image:
 
         self.user_message(f"Pipeline of the image displayed below is: {self.pipeline}")
 
-        if subplots[2] == subplots[0] * subplots[1]:
+        if subplots[2] == subplots[0] * subplots[1] and show:
             plt.show()
 
 

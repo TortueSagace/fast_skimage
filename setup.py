@@ -37,7 +37,7 @@ setup(
     ],
     packages=["fast_skimage"],
     include_package_data=True,
-    install_requires=["numpy", "matplotlib", "scikit-image", "PyWavelets", "tqdm"]
+    install_requires=["numpy", "matplotlib", "scikit-image", "PyWavelets", "tqdm", "scikit-learn"]
 )
 
 """
