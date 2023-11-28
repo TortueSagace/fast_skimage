@@ -564,6 +564,9 @@ class Image:
     def resize_to(self, output_shape, order=0):
         self.set_image(resize(self.image, output_shape, order=order), "resize_to")
 
+    def reshape(self, x, y):
+        self.set_image(self.image.reshape(x, y), "reshape")
+
     def round_mask(self, x, y, radius_lim, center=False):
         if center:
             x0, y0 = self.image.shape[0] // 2, self.image.shape[1] // 2
@@ -614,7 +617,8 @@ class Image:
 
 
     def show(self, size=6, title='', x_axis='', y_axis='', type_of_plot='rgb', subplots=(0, 0, 0), grayscale=False,
-             normalize=False, axis=False, threshold=None, colorbar=False, alpha=1, show=True, cmap='gray'):
+             normalize=False, axis=False, threshold=None, colorbar=False, alpha=1, show=True, cmap='gray',
+             interpolation=None):
         """
         Shortcut function to execute commands often used to plot functions and show images.
         :param size: int if square or bool if rectangle
@@ -653,15 +657,15 @@ class Image:
             if title == '':
                 plt.title(self.name)
             if not self.iscolor:
-                plt.imshow(self.image, cmap=cmap, alpha=alpha)
+                plt.imshow(self.image, cmap=cmap, alpha=alpha, interpolation=interpolation)
             elif grayscale:
                 self.color_to_gray()
                 self.get_iscolor()
                 if self.iscolor == True:
                     raise AssertionError("Something went wrong with rgb2gray: the image is still rgb.")
-                plt.imshow(self.image, cmap=cmap, alpha=alpha)
+                plt.imshow(self.image, cmap=cmap, alpha=alpha, interpolation=interpolation)
             else:
-                plt.imshow(self.image, alpha=alpha)
+                plt.imshow(self.image, alpha=alpha, interpolation=interpolation)
         elif type_of_plot == 'hist':
             if not self.iscolor:
                 if title == '':
