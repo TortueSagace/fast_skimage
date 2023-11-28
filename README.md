@@ -76,5 +76,6 @@ This library is distributed under the MIT license. See `LICENSE` for more inform
 - **Author**: Alexandre Le Mercier
 - **Date**: November 21, 2023
 - **Email**: [alexandre.le.mercier@ulb.be](mailto:alexandre.le.mercier@ulb.be)
+- **LinkedIn**: [Alexandre Le Mercier](https://www.linkedin.com/in/alexandre-le-mercier-7b5594283/details/experience/)
 
 Happy Image Processing!
