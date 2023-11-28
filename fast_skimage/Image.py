@@ -180,7 +180,11 @@ class Image:
                 f"Both images must have the same size, but image 1 has {self.image.shape} but image 2 {other_image.shape}.")
 
     def color_to_gray(self):
-        self.set_image(color.rgb2gray(self.image), "color_to_gray")
+        self.get_iscolor()
+        if self.iscolor:
+            self.set_image(color.rgb2gray(self.image), "color_to_gray")
+        else:
+            warnings.warn(f"color_to_gray: image {self.name} is already grayscale. Skip.")
 
 
     def detect_noise(self, noisy_threshold=0.01):
@@ -240,7 +244,7 @@ class Image:
         self.set_image(lut[self.image.astype(np.uint8)].astype(np.uint8), "gamma_correction")
 
 
-    def gaussian_mixture_segmentation(self, iterations=100, zones=4):
+    def gaussian_mixture_segmentation(self, iterations=100, zones=4, return_areas=False):
         """
         Uses the clustering method "Gaussian Mixture" to segment the zones.
         :param iterations: number of maximum iterations of the algorithm
@@ -264,6 +268,14 @@ class Image:
         segmented_image = segmented.reshape(self.image.shape)
 
         self.set_image(segmented_image, "gaussian mixture segmentation")
+
+        if return_areas:
+            areas = list()
+            for i in range(zones):
+                area = np.sum(segmented == i)
+                areas.append(area)
+                self.user_message(f"Area of cluster {i}: {area} pixels")
+            return areas
 
 
     def get_descriptors(self, region, displacements, angles, props):
@@ -299,7 +311,8 @@ class Image:
         """
         self.get_iscolor()
         if self.iscolor:
-            raise ValueError("Input image must be a 2D array representing a grayscale image.")
+            warnings.warn(f"gray_to_color: image {self.name} is already colored. Skip.")
+            return
 
         # Replicate the single channel across all three RGB channels
         color_image = np.array(np.stack((self.image,) * 3, axis=-1))
@@ -318,8 +331,7 @@ class Image:
 
         descriptors = np.zeros((n_cells_y, n_cells_x, len(angles)*len(displacements)*len(props)))
 
-        # Convert self.imageage to grayscale
-        self.color_to_gray() if self.image.ndim == 3 else im
+        self.color_to_gray()
 
         # Scale grayscale image to 8-bit and convert to uint8
         imgray_8bit = img_as_ubyte(self.image)
@@ -602,7 +614,7 @@ class Image:
 
 
     def show(self, size=6, title='', x_axis='', y_axis='', type_of_plot='rgb', subplots=(0, 0, 0), grayscale=False,
-             normalize=False, axis=False, threshold=None, colorbar=False, alpha=1, show=True):
+             normalize=False, axis=False, threshold=None, colorbar=False, alpha=1, show=True, cmap='gray'):
         """
         Shortcut function to execute commands often used to plot functions and show images.
         :param size: int if square or bool if rectangle
@@ -641,13 +653,13 @@ class Image:
             if title == '':
                 plt.title(self.name)
             if not self.iscolor:
-                plt.imshow(self.image, cmap='gray', alpha=alpha)
+                plt.imshow(self.image, cmap=cmap, alpha=alpha)
             elif grayscale:
                 self.color_to_gray()
                 self.get_iscolor()
                 if self.iscolor == True:
                     raise AssertionError("Something went wrong with rgb2gray: the image is still rgb.")
-                plt.imshow(self.image, cmap='gray', alpha=alpha)
+                plt.imshow(self.image, cmap=cmap, alpha=alpha)
             else:
                 plt.imshow(self.image, alpha=alpha)
         elif type_of_plot == 'hist':

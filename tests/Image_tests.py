@@ -43,8 +43,14 @@ class ImageTestCase(unittest.TestCase):
     def test_segmentation(self):
         im = Image('Pictures/mri_brain.jpg', True)
         im.color_to_gray()
-        im.gaussian_mixture_segmentation(zones=4, iterations=1000)
-        im.show()
+        areas = im.gaussian_mixture_segmentation(zones=5, iterations=1000, return_areas=True)
+        im.show(colorbar=True, cmap='viridis')
+
+        cm_by_pixel = 0.115
+        cm2_by_pixel2 = cm_by_pixel ** 2
+        for area in areas:
+            if area == min(areas):  # area of interesting zone (after looking at the output)
+                print(f"Area of the tumor is estimated to {round(cm2_by_pixel2 * area, 2)} cm².")
 
 
 if __name__ == '__main__':
