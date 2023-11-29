@@ -322,6 +322,22 @@ class Image:
 
 
     def graycomatrix_segmentation(self, angles = [0, np.pi/6, np.pi/3, np.pi/2, 2*np.pi/3, 5*np.pi/6], displacements = [1, 2, 3], props = ['dissimilarity'], n_cells_x=None, n_cells_y=None):
+        """
+        Compute gray-level co-occurrence matrix descriptors for image segmentation.
+
+        Args:
+            angles (list of float): A list of angles (in radians) for texture analysis.
+            displacements (list of int): A list of pixel displacements for co-occurrence matrix computation.
+            props (list of str): A list of properties to compute for the co-occurrence matrix.
+            n_cells_x (int, optional): The number of cells in the x-direction for image segmentation.
+                If None, it defaults to the width of the input image.
+            n_cells_y (int, optional): The number of cells in the y-direction for image segmentation.
+                If None, it defaults to the height of the input image.
+
+        Returns:
+            list of Image: A list of segmented images, each corresponding to a computed descriptor.
+                The images are instances of the 'Image' class with segmentation results.
+        """
 
         n_cells_x = self.image.shape[0] if n_cells_x == None else n_cells_x
         n_cells_y = self.image.shape[1] if n_cells_y == None else n_cells_y
@@ -621,7 +637,7 @@ class Image:
              interpolation=None):
         """
         Shortcut function to execute commands often used to plot functions and show images.
-        :param size: int if square or bool if rectangle
+        :param size: int if square or tuple if rectangle
         :param title: str
         :param x_axis: str
         :param y_axis: str
