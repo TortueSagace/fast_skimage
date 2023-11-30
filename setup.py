@@ -15,7 +15,7 @@ with open(path.join(HERE, 'README.md'), encoding='utf-8') as f:
 # This call to setup() does all the work
 setup(
     name="fast_skimage",
-    version="0.2.2",
+    version="0.2.3",
     description="Fast and easy image processing using an Image class based on the scikit-image,"
                 " numpy and matplotlib libraries.",
     long_description=long_description,
